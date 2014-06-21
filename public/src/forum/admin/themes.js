@@ -161,7 +161,7 @@ define('forum/admin/themes', ['forum/admin/settings'], function(Settings) {
 	};
 
 	Themes.prepareWidgets = function() {
-		$('[data-location="drafts"]').insertAfter($('[data-location="drafts"]').parents('.tab-content'));
+		$('[data-location="drafts"]').insertAfter($('[data-location="drafts"]').closest('.tab-content'));
 		
 		$('#widgets .available-widgets .panel').draggable({
 			helper: function(e) {
@@ -222,9 +222,9 @@ define('forum/admin/themes', ['forum/admin/settings'], function(Settings) {
 		$('#widgets .save').on('click', saveWidgets);
 
 		function saveWidgets() {
-			var total = $('#widgets [data-template]').length;
+			var total = $('#widgets [data-template][data-location]').length;
 
-			$('#widgets [data-template]').each(function(i, el) {
+			$('#widgets [data-template][data-location]').each(function(i, el) {
 				el = $(el);
 
 				var template = el.attr('data-template'),

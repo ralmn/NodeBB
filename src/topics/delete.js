@@ -8,6 +8,33 @@ var async = require('async'),
 
 module.exports = function(Topics) {
 
+	function updateCounters(tid, incr, callback) {
+		async.parallel([
+			function(next) {
+				db.incrObjectFieldBy('global', 'topicCount', incr, next);
+			},
+			function(next) {
+				Topics.getTopicFields(tid, ['cid', 'postcount'], function(err, topicData) {
+					if (err) {
+						return next(err);
+					}
+					var postCountChange = incr * parseInt(topicData.postcount, 10);
+					async.parallel([
+						function(next) {
+							db.incrObjectFieldBy('global', 'postCount', postCountChange, next);
+						},
+						function(next) {
+							db.incrObjectFieldBy('category:' + topicData.cid, 'post_count', postCountChange, next);
+						},
+						function(next) {
+							db.incrObjectFieldBy('category:' + topicData.cid, 'topic_count', incr, next);
+						}
+					], next);
+				});
+			}
+		], callback);
+	}
+
 	Topics.delete = function(tid, callback) {
 		async.parallel([
 			function(next) {
@@ -21,21 +48,13 @@ module.exports = function(Topics) {
 			},
 			function(next) {
 				db.sortedSetRemove('topics:views', tid, next);
-			},
-			function(next) {
-				Topics.getTopicField(tid, 'cid', function(err, cid) {
-					if(err) {
-						return next(err);
-					}
-					db.incrObjectFieldBy('category:' + cid, 'topic_count', -1, next);
-				});
 			}
 		], function(err) {
 			if (err) {
 				return callback(err);
 			}
 
-			Topics.updateTopicCount(callback);
+			updateCounters(tid, -1, callback);
 		});
 	};
 
@@ -57,21 +76,13 @@ module.exports = function(Topics) {
 				},
 				function(next) {
 					db.sortedSetAdd('topics:views', topicData.viewcount, tid, next);
-				},
-				function(next) {
-					Topics.getTopicField(tid, 'cid', function(err, cid) {
-						if(err) {
-							return next(err);
-						}
-						db.incrObjectFieldBy('category:' + cid, 'topic_count', 1, next);
-					});
 				}
 			], function(err) {
 				if (err) {
 					return callback(err);
 				}
 
-				Topics.updateTopicCount(callback);
+				updateCounters(tid, 1, callback);
 			});
 		});
 	};
@@ -135,7 +146,7 @@ module.exports = function(Topics) {
 							db.decrObjectField('category:' + topicData.cid, 'topic_count', next);
 						},
 						function(next) {
-							db.decrObjectField('global', 'topicCount', callback);
+							db.decrObjectField('global', 'topicCount', next);
 						}
 					], callback);
 				} else {

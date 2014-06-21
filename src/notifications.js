@@ -11,7 +11,8 @@ var async = require('async'),
 	events = require('./events'),
 	User = require('./user'),
 	groups = require('./groups'),
-	meta = require('./meta');
+	meta = require('./meta'),
+	plugins = require('./plugins');
 
 (function(Notifications) {
 
@@ -31,10 +32,18 @@ var async = require('async'),
 
 			if (exists) {
 				db.sortedSetRank('uid:' + uid + ':notifications:read', nid, function(err, rank) {
-
-					db.getObjectFields('notifications:' + nid, ['nid', 'from', 'text', 'image', 'importance', 'score', 'path', 'datetime', 'uniqueId'], function(err, notification) {
+					db.getObject('notifications:' + nid, function(err, notification) {
 						notification.read = rank !== null ? true:false;
-						notification.text = validator.escape(notification.text);
+						
+						// Backwards compatibility for old notification schema
+						if (notification.hasOwnProperty('text')) {
+							notification.bodyShort = notification.text;
+							notification.bodyLong = '';
+							notification.text = validator.escape(notification.text);
+						}
+
+						notification.bodyShort = validator.escape(notification.bodyShort);
+						notification.bodyLong = validator.escape(notification.bodyLong);
 
 						if (notification.from && !notification.image) {
 							User.getUserField(notification.from, 'picture', function(err, picture) {
@@ -84,16 +93,26 @@ var async = require('async'),
 
 		// Add default values to data Object if not already set
 		var	defaults = {
-				text: '',
+				bodyShort: '',
+				bodyLong: '',
 				path: '',
 				importance: 5,
 				datetime: Date.now(),
 				uniqueId: utils.generateUUID()
 			};
+
 		for(var v in defaults) {
 			if (defaults.hasOwnProperty(v) && !data[v]) {
 				data[v] = defaults[v];
 			}
+		}
+
+		// Backwards compatibility for old notification schema
+		// Remove this block for NodeBB v0.6.0
+		if (data.hasOwnProperty('text')) {
+			data.bodyShort = data.text;
+			data.bodyLong = '';
+			delete data.text;
 		}
 
 		db.incrObjectField('global', 'nextNid', function(err, nid) {
@@ -102,6 +121,8 @@ var async = require('async'),
 			db.setObject('notifications:' + nid, data, function(err, status) {
 				if (!err) {
 					callback(nid);
+				} else {
+					winston.error('[notifications.create] ' + err.message);
 				}
 			});
 		});
@@ -125,7 +146,13 @@ var async = require('async'),
 				checkReplace(notif_data.uniqueId, uid, notif_data, function(err, replace) {
 					if (replace) {
 						db.sortedSetAdd('uid:' + uid + ':notifications:unread', notif_data.datetime, nid);
+
+						// Client-side
 						websockets.in('uid_' + uid).emit('event:new_notification', notif_data);
+
+						// Plugins
+						notif_data.uid = uid;
+						plugins.fireHook('action:notification.pushed', notif_data);
 					}
 					next();
 				});

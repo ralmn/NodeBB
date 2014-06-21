@@ -2,7 +2,17 @@
 
 /* globals define, socket, app, config, ajaxify, utils, translator, templates, bootbox */
 
-define('composer', ['taskbar', 'composer/controls', 'composer/uploads', 'composer/formatting', 'composer/drafts', 'composer/tags'], function(taskbar, controls, uploads, formatting, drafts, tags) {
+var dependencies = [
+	'taskbar',
+	'composer/controls',
+	'composer/uploads',
+	'composer/formatting',
+	'composer/drafts',
+	'composer/tags',
+	'composer/preview'
+];
+
+define('composer', dependencies, function(taskbar, controls, uploads, formatting, drafts, tags, preview) {
 	var composer = {
 		active: undefined,
 		posts: {},
@@ -148,10 +158,10 @@ define('composer', ['taskbar', 'composer/controls', 'composer/uploads', 'compose
 
 			push({
 				pid: pid,
-				title: threadData.title,
+				title: $('<div/>').html(threadData.title).text(),
 				body: threadData.body,
 				modified: false,
-				isMain: !threadData.index,
+				isMain: threadData.isMain,
 				topic_thumb: threadData.topic_thumb,
 				tags: threadData.tags
 			});
@@ -208,15 +218,13 @@ define('composer', ['taskbar', 'composer/controls', 'composer/uploads', 'compose
 					bodyEl = postContainer.find('textarea'),
 					draft = drafts.getDraft(postData.save_id);
 
-				postData.title = $('<div></div>').text(postData.title).html();
-
 				updateTitle(postData, postContainer);
 
 				if (allowTopicsThumbnail) {
 					uploads.toggleThumbEls(postContainer, composer.posts[post_uuid].topic_thumb || '');
 				}
 
-				bodyEl.val(draft ? draft : postData.body);
+
 
 				postContainer.on('change', 'input, textarea', function() {
 					composer.posts[post_uuid].modified = true;
@@ -251,14 +259,18 @@ define('composer', ['taskbar', 'composer/controls', 'composer/uploads', 'compose
 					return false;
 				});
 
-				bodyEl.on('blur', function() {
-					socket.emit('modules.composer.renderPreview', bodyEl.val(), function(err, preview) {
-						preview = $(preview);
-						preview.find('img').addClass('img-responsive');
-						postContainer.find('.preview').html(preview);
-					});
+				bodyEl.on('input propertychange', function() {
+					preview.render(postContainer);
 				});
 
+				bodyEl.on('scroll', function() {
+					preview.matchScroll(postContainer);
+				})
+
+				bodyEl.val(draft ? draft : postData.body);
+				preview.render(postContainer, function() {
+					preview.matchScroll(postContainer);
+				});
 				drafts.init(postContainer, postData);
 
 				handleResize(postContainer);
@@ -275,7 +287,6 @@ define('composer', ['taskbar', 'composer/controls', 'composer/uploads', 'compose
 				});
 
 				formatting.addComposerButtons();
-
 
 			});
 		});

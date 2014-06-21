@@ -236,6 +236,7 @@ var fs = require('fs'),
 			'vendor/jquery/timeago/jquery.timeago.min.js',
 			'vendor/jquery/js/jquery.form.min.js',
 			'vendor/jquery/serializeObject/jquery.ba-serializeobject.min.js',
+			'vendor/jquery/deserialize/jquery.deserialize.min.js',
 			'vendor/bootstrap/js/bootstrap.min.js',
 			'vendor/jquery/bootstrap-tagsinput/bootstrap-tagsinput.min.js',
 			'vendor/requirejs/require.js',
@@ -281,32 +282,31 @@ var fs = require('fs'),
 		},
 		prepare: function (callback) {
 			plugins.fireHook('filter:scripts.get', this.scripts, function(err, scripts) {
-				var ctime,
-					jsPaths = scripts.map(function (jsPath) {
-						jsPath = path.normalize(jsPath);
+				var jsPaths = scripts.map(function (jsPath) {
+					jsPath = path.normalize(jsPath);
 
-						if (jsPath.substring(0, 7) === 'plugins') {
-							var	matches = _.map(plugins.staticDirs, function(realPath, mappedPath) {
-								if (jsPath.match(mappedPath)) {
-									return mappedPath;
-								} else {
-									return null;
-								}
-							}).filter(function(a) { return a; });
-
-							if (matches.length) {
-								var	relPath = jsPath.slice(('plugins/' + matches[0]).length),
-									pluginId = matches[0].split(path.sep)[0];
-
-								return plugins.staticDirs[matches[0]] + relPath;
+					if (jsPath.substring(0, 7) === 'plugins') {
+						var	matches = _.map(plugins.staticDirs, function(realPath, mappedPath) {
+							if (jsPath.match(mappedPath)) {
+								return mappedPath;
 							} else {
-								winston.warn('[meta.scripts.get] Could not resolve mapped path: ' + jsPath + '. Are you sure it is defined by a plugin?');
 								return null;
 							}
+						}).filter(function(a) { return a; });
+
+						if (matches.length) {
+							var	relPath = jsPath.slice(('plugins/' + matches[0]).length),
+								pluginId = matches[0].split(path.sep)[0];
+
+							return plugins.staticDirs[matches[0]] + relPath;
 						} else {
-							return path.join(__dirname, '..', '/public', jsPath);
+							winston.warn('[meta.scripts.get] Could not resolve mapped path: ' + jsPath + '. Are you sure it is defined by a plugin?');
+							return null;
 						}
-					});
+					} else {
+						return path.join(__dirname, '..', '/public', jsPath);
+					}
+				});
 
 				Meta.js.scripts = jsPaths.filter(function(path) {
 					return path !== null;
@@ -332,8 +332,7 @@ var fs = require('fs'),
 
 					emitter.emit('meta:js.compiled');
 				} else {
-					winston.error('[meta/js] Could not compile client-side scripts!');
-					winston.error('[meta/js]   ' + payload.error.message);
+					winston.error('[meta/js] Could not compile client-side scripts! ' + payload.error.message);
 					minifier.kill();
 					process.exit();
 				}
@@ -373,15 +372,16 @@ var fs = require('fs'),
 					path.join(__dirname, '../public/vendor/fontawesome/less')
 				],
 				source = '@import "./theme";\n@import "font-awesome";',
-				x, numLESS, numCSS;
+				x;
 
-			// Add the imports for each LESS file
-			for(x=0,numLESS=plugins.lessFiles.length;x<numLESS;x++) {
+
+			plugins.lessFiles = filterMissingFiles(plugins.lessFiles);
+			for(x=0; x<plugins.lessFiles.length; ++x) {
 				source += '\n@import ".' + path.sep + plugins.lessFiles[x] + '";';
 			}
 
-			// ... and for each CSS file
-			for(x=0,numCSS=plugins.cssFiles.length;x<numCSS;x++) {
+			plugins.cssFiles = filterMissingFiles(plugins.cssFiles);
+			for(x=0; x<plugins.cssFiles.length; ++x) {
 				source += '\n@import (inline) ".' + path.sep + plugins.cssFiles[x] + '";';
 			}
 
@@ -419,6 +419,16 @@ var fs = require('fs'),
 			});
 		});
 	};
+
+	function filterMissingFiles(files) {
+		return files.filter(function(file) {
+			var exists = fs.existsSync(path.join(__dirname, '../node_modules', file));
+			if (!exists) {
+				winston.warn('[meta/css] File not found! ' + file);
+			}
+			return exists;
+		});
+	}
 
 	Meta.css.updateBranding = function() {
 		var Settings = require('./settings');

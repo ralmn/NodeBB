@@ -468,6 +468,14 @@ var socket,
 		}
 
 		searchButton.off().on('click', function(e) {
+			if (!config.isLoggedIn && !config.allowGuestSearching) {
+				app.alert({
+					message:'[[error:search-requires-login]]',
+					timeout: 3000
+				});
+				ajaxify.go('login');
+				return false;
+			}
 			e.stopPropagation();
 
 			searchFields.removeClass('hide').show();
@@ -510,13 +518,11 @@ var socket,
 
 	app.load = function() {
 		$('document').ready(function () {
-			var url = window.location.pathname.slice(1).replace(/\/$/, ""),
+			var url = ajaxify.removeRelativePath(window.location.pathname.slice(1).replace(/\/$/, "")),
+				tpl_url = ajaxify.getTemplateMapping(url),
 				search = window.location.search,
 				hash = window.location.hash,
-				tpl_url = ajaxify.getTemplateMapping(url),
 				$window = $(window);
-
-			url = ajaxify.removeRelativePath(url);
 
 			ajaxify.widgets.render(tpl_url, url);
 

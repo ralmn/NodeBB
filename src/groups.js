@@ -150,6 +150,10 @@
 		db.isSetMember('group:' + groupName + ':members', uid, callback);
 	};
 
+	Groups.getMemberCount = function(groupName, callback) {
+		db.setCount('group:' + groupName + ':members', callback);
+	};
+
 	Groups.isMemberOfGroupList = function(uid, groupListKey, callback) {
 		db.getSetMembers('group:' + groupListKey + ':members', function(err, groupNames) {
 			groupNames = internals.removeEphemeralGroups(groupNames);
@@ -215,9 +219,8 @@
 	};
 
 	Groups.hide = function(groupName, callback) {
-		Groups.update(groupName, {
-			hidden: '1'
-		}, callback);
+		callback = callback || function() {};
+		db.setObjectField('group:' + groupName, 'hidden', 1, callback);
 	};
 
 	Groups.update = function(groupName, values, callback) {
@@ -228,8 +231,11 @@
 			}
 
 			db.setObject('group:' + groupName, {
-				userTitle: values.userTitle,
-				description: values.description
+				userTitle: values.userTitle || '',
+				description: values.description || '',
+				icon: values.icon || '',
+				labelColor: values.labelColor || '#000000',
+				hidden: values.hidden || '0'
 			}, callback);
 		});
 	};
@@ -258,7 +264,6 @@
 						winston.error('[groups.join] Could not create new hidden group: ' + err.message);
 						return callback(err);
 					}
-
 					Groups.hide(groupName);
 					db.setAdd('group:' + groupName + ':members', uid, callback);
 				});
@@ -310,11 +315,14 @@
 			var	keys = groupObj.members.map(function(uid) {
 				return 'uid:' + uid + ':posts';
 			});
+
 			db.getSortedSetRevUnion(keys, 0, max-1, function(err, pids) {
-				posts.getPostSummaryByPids(pids, false, function(err, posts) {
-					callback(null, posts);
-				})
-			})
+				if (err) {
+					return callback(err);
+				}
+
+				posts.getPostSummaryByPids(pids, false, callback);
+			});
 		});
 	};
 
@@ -328,7 +336,7 @@
 				return 'group:' + groupName;
 			});
 
-			db.getObjectsFields(groupKeys, ['name', 'hidden', 'userTitle'], function(err, groupData) {
+			db.getObjectsFields(groupKeys, ['name', 'hidden', 'userTitle', 'icon', 'labelColor'], function(err, groupData) {
 
 				groupData = groupData.filter(function(group) {
 					return parseInt(group.hidden, 10) !== 1;
@@ -336,8 +344,9 @@
 
 				var groupSets = groupData.map(function(group) {
 					group.userTitle = group.userTitle || group.name;
+					group.labelColor = group.labelColor || '#000000';
 					return 'group:' + group.name + ':members';
-				})
+				});
 
 				db.isMemberOfSets(groupSets, uid, function(err, isMembers) {
 					for(var i=isMembers.length - 1; i>=0; --i) {
@@ -350,5 +359,5 @@
 				});
 			});
 		});
-	}
+	};
 }(module.exports));
